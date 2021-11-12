@@ -1,0 +1,12 @@
+# rust
+**/*.rs.bk
+/target
+Cargo.lock
+
+# editor
+*~
+.*~
+*.swp
+*.swo
+\#*#
+.vscode/
