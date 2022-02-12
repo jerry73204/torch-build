@@ -2,8 +2,15 @@
 name = "torch-build"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Utilities to link libtorch FFI interface."
+authors = ["Jerry Lin <jerry73204@gmail.com>"]
+categories = ["parsing"]
+documentation = "https://docs.rs/torch-build/"
+repository = "https://github.com/jerry73204/torch-build.git"
+homepage = "https://github.com/jerry73204/torch-build"
+build = "build.rs"
+readme = "README.md"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.45"
