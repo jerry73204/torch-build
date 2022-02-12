@@ -1,3 +1,5 @@
+//! Utilities to link libtorch FFI interface.
+
 mod build;
 pub mod cuda;
 mod download;
