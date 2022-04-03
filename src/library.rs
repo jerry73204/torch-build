@@ -234,6 +234,30 @@ impl Api {
     pub fn is_cuda_api_available(&self) -> bool {
         !matches!(self, Self::None)
     }
+
+    pub fn cuda_home_dir(&self) -> Option<&Path> {
+        Some(match self {
+            Self::None | Self::Hip(_) => return None,
+            Self::Cuda(api) => api.cuda_home,
+            Self::CudaSplit(api) => api.cuda_home,
+        })
+    }
+
+    pub fn cudnn_home_dir(&self) -> Option<&Path> {
+        match self {
+            Self::None | Self::Hip(_) => None,
+            Self::Cuda(api) => api.cudnn_home,
+            Self::CudaSplit(api) => api.cudnn_home,
+        }
+    }
+
+    pub fn cuda_include_dir(&self) -> Option<PathBuf> {
+        Some(self.cuda_home_dir()?.join("include"))
+    }
+
+    pub fn cuda_library_dir(&self) -> Option<PathBuf> {
+        Some(self.cuda_home_dir()?.join("lib64"))
+    }
 }
 
 impl From<HipApi> for Api {
