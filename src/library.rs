@@ -180,7 +180,7 @@ impl Library {
             .into()
             .unwrap_or_else(|| self.is_cuda_api_available());
         let base_libraries = ["c10", "torch_cpu", "torch"];
-        let python_library = use_python.then(|| "torch_python");
+        let python_library = use_python.then_some("torch_python");
         let base_cuda_libraries = ["cudart", "c10_cuda"];
 
         let cuda_libraries = if use_cuda_api {
@@ -208,7 +208,7 @@ impl Library {
 
         let gomp = TARGET.as_ref().and_then(|target| {
             let ok = !target.contains("msvc") && !target.contains("apple");
-            ok.then(|| "gomp")
+            ok.then_some("gomp")
         });
 
         Ok(chain!(base_libraries, python_library, cuda_libraries, gomp))

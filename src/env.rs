@@ -91,7 +91,7 @@ pub static ROCM_HOME: Lazy<Option<PathBuf>> = Lazy::new(|| {
             .arg("which hipcc | xargs readlink -f")
             .output()
             .ok()
-            .and_then(|output| output.status.success().then(|| output.stdout))
+            .and_then(|output| output.status.success().then_some(output.stdout))
             .and_then(|stdout| {
                 use std::os::unix::ffi::OsStrExt;
 
@@ -110,7 +110,7 @@ pub static ROCM_HOME: Lazy<Option<PathBuf>> = Lazy::new(|| {
     #[cfg(unix)]
     let guess = guess.or_else(|| {
         let dir = PathBuf::from("/opt/rocm");
-        dir.exists().then(|| dir)
+        dir.exists().then_some(dir)
     });
 
     guess
@@ -137,7 +137,7 @@ pub static CUDA_HOME: Lazy<Option<PathBuf>> = Lazy::new(|| {
             .arg("nvcc")
             .output()
             .ok()
-            .and_then(|output| output.status.success().then(|| output.stdout))
+            .and_then(|output| output.status.success().then_some(output.stdout))
             .and_then(|stdout| {
                 use std::os::unix::ffi::OsStrExt;
 
@@ -152,7 +152,7 @@ pub static CUDA_HOME: Lazy<Option<PathBuf>> = Lazy::new(|| {
     match os_info::get().os_type() {
         Debian | Ubuntu => guess.or_else(|| {
             let dir = PathBuf::from("/usr/local/cuda");
-            dir.exists().then(|| dir)
+            dir.exists().then_some(dir)
         }),
         _ => guess,
     }

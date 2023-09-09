@@ -252,6 +252,12 @@ impl CppExtension {
     }
 }
 
+impl Default for CppExtension {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn configure_python_libs_unix(build: &mut cc::Build) -> Result<()> {
     let output = Command::new("python3-config")
