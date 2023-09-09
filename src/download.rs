@@ -59,7 +59,7 @@ pub fn libtorch_url() -> Result<&'static str> {
         let url = {
             cfg_if! {
                 if #[cfg(target_os = "linux")] {
-                    let use_cxx11_abi = crate::probe::check_cxx11_abi();
+                    let use_cxx11_abi = crate::probe::probe_cxx11_abi();
 
                     // XXX: the indentation prevents rustfmt to crash
                     format!(

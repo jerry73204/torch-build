@@ -73,6 +73,20 @@ pub static LIBTORCH_CXX11_ABI: Lazy<Option<bool>> = Lazy::new(|| {
 /// The value of `LIBTORCH` environment variable.
 pub static LIBTORCH: Lazy<Option<PathBuf>> = Lazy::new(|| rerun_env_pathbuf("LIBTORCH"));
 
+/// The value of `LIBTORCH_USE_PYTORCH` environment variable.
+pub static LIBTORCH_USE_PYTORCH: Lazy<bool> =
+    Lazy::new(|| match rerun_env_string("LIBTORCH_USE_PYTORCH") {
+        Some(value) => value != "0",
+        None => false,
+    });
+
+/// The value of `LIBTORCH_USE_PYTORCH` environment variable.
+pub static LIBTORCH_BYPASS_VERSION_CHECK: Lazy<bool> =
+    Lazy::new(|| match rerun_env_string("LIBTORCH_BYPASS_VERSION_CHECK") {
+        Some(value) => value != "0",
+        None => false,
+    });
+
 /// The value of `TORCH_CUDA_VERSION` environment variable.
 pub static TORCH_CUDA_VERSION: Lazy<Option<String>> =
     Lazy::new(|| rerun_env_string("TORCH_CUDA_VERSION"));
@@ -197,7 +211,7 @@ fn rerun_env_string(name: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::CONFIG;
+    use crate::env::CONFIG;
 
     #[test]
     fn parse_config_toml() {

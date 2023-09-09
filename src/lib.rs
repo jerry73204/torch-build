@@ -3,6 +3,7 @@
 mod build;
 pub mod config;
 pub mod cuda;
+#[cfg(feature = "download-libtorch")]
 mod download;
 pub mod env;
 pub mod library;
@@ -12,7 +13,7 @@ mod utils;
 pub use build::*;
 pub use config::*;
 pub use cuda::*;
+#[cfg(feature = "download-libtorch")]
 pub use download::*;
-pub use env::*;
 pub use library::*;
 pub use probe::*;

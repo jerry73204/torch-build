@@ -13,10 +13,15 @@ use std::{
 /// The information of libtorch installation and its capabilities.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Library {
-    /// The installation directory.
-    pub libtorch_dir: &'static Path,
+    /// The directory containing header files.
+    pub include_dir: PathBuf,
+
+    /// The directory containing library files.
+    pub lib_dir: PathBuf,
+
     /// The CUDA API variants.
     pub api: Api,
+
     /// True if host system uses C++11 ABI.
     pub use_cxx11_abi: bool,
 }
@@ -33,9 +38,11 @@ impl Library {
         use_cuda_api: impl Into<Option<bool>>,
     ) -> Result<impl Iterator<Item = PathBuf>> {
         let Self {
-            libtorch_dir, api, ..
+            include_dir: libtorch_include_dir,
+            api,
+            ..
         } = self;
-        let include_dir = libtorch_dir.join("include");
+        let include_dir = libtorch_include_dir;
         let use_cuda_api = use_cuda_api
             .into()
             .unwrap_or_else(|| self.is_cuda_api_available());
@@ -101,12 +108,14 @@ impl Library {
         use_cuda_api: impl Into<Option<bool>>,
     ) -> Result<impl Iterator<Item = PathBuf>> {
         let Self {
-            libtorch_dir, api, ..
+            lib_dir: libtorch_lib_dir,
+            api,
+            ..
         } = self;
         let use_cuda_api = use_cuda_api
             .into()
             .unwrap_or_else(|| self.is_cuda_api_available());
-        let lib_dir = libtorch_dir.join("lib");
+        let lib_dir = libtorch_lib_dir;
         let extra_dirs = if use_cuda_api {
             match api {
                 Api::Hip(HipApi { rocm_home, .. }) => iter::once(rocm_home.join("lib")).boxed(),
@@ -159,7 +168,7 @@ impl Library {
             iter::empty().boxed()
         };
 
-        let all_paths = chain!([lib_dir], extra_dirs);
+        let all_paths = chain!([lib_dir.clone()], extra_dirs);
 
         Ok(all_paths)
     }
