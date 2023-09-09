@@ -1,0 +1,26 @@
+torch_version = "1.10.0"
+torch_cuda_arch_list = [
+    "3.5",
+    "3.7",
+    "5.0",
+    "5.2",
+    "5.3",
+    "6.0",
+    "6.1",
+    "6.2",
+    "7.0",
+    "7.2",
+    "7.5",
+    "8.0",
+    "8.6",
+]
+
+[cuda_arch_aliases]
+"Kepler+Tesla" = ["3.7"]
+"Kepler" = ["3.5+PTX"]
+"Maxwell+Tegra" = ["5.3"]
+"Maxwell" = ["5.0", "5.2+PTX"]
+"Pascal" = ["6.0", "6.1+PTX"]
+"Volta" = ["7.0+PTX"]
+"Turing" = ["7.5+PTX"]
+"Ampere" = ["8.0", "8.6+PTX"]

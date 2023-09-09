@@ -1,6 +1,7 @@
 //! Utilities to link libtorch FFI interface.
 
 mod build;
+pub mod config;
 pub mod cuda;
 mod download;
 pub mod env;
@@ -9,6 +10,7 @@ mod probe;
 mod utils;
 
 pub use build::*;
+pub use config::*;
 pub use cuda::*;
 pub use download::*;
 pub use env::*;

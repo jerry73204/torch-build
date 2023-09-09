@@ -1,35 +1,39 @@
 //! Environment variables and constatns.
 
-use crate::cuda::CudaArch;
+use crate::config::{Config, CudaArch};
+use anyhow::Result;
 use cfg_if::cfg_if;
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
+    env,
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::Command,
 };
+
+pub(crate) static CONFIG: Lazy<Config> = Lazy::new(|| {
+    let text = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/config.toml"));
+    toml::from_str(text).unwrap_or_else(|err| panic!("unable to parse config.toml\n{err}"))
+});
 
 /// The list of CUDA architectures given by `TORCH_CUDA_ARCH_LIST` environment variable.
 ///
 /// If `TORCH_CUDA_ARCH_LIST` is not set, the default supported architectures are given.
 pub(crate) static TORCH_CUDA_ARCH_LIST: Lazy<HashSet<CudaArch>> = Lazy::new(|| {
     if let Some(val) = rerun_env_string("TORCH_CUDA_ARCH_LIST") {
-        CudaArch::parse_list(&val)
+        parse_cuda_arch_list(&val)
             .unwrap_or_else(|_| {
                 panic!(
                     r#"unable to parse environment variable TORCH_CUDA_ARCH_LIST = "{}""#,
                     val
-                )
+                );
             })
             .into_iter()
             .collect()
     } else {
-        let text = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/TORCH_CUDA_ARCH_LIST"));
-        CudaArch::parse_list(text)
-            .expect("unable to load TORCH_CUDA_ARCH_LIST file")
-            .into_iter()
-            .collect()
+        CONFIG.torch_cuda_arch_list.clone()
     }
 });
 
@@ -38,8 +42,7 @@ pub(crate) static OUT_DIR: &str = env!("OUT_DIR");
 pub(crate) static TARGET: Lazy<Option<String>> = Lazy::new(|| rerun_env_string("TARGET"));
 
 /// The supported libtorch version.
-pub static TORCH_VERSION: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/TORCH_VERSION"));
+pub static TORCH_VERSION: Lazy<&str> = Lazy::new(|| &CONFIG.torch_version);
 
 /// The value of `LIBTORCH_CXX11_ABI` environment variable.
 pub static LIBTORCH_CXX11_ABI: Lazy<Option<bool>> = Lazy::new(|| {
@@ -158,9 +161,29 @@ pub static CUDA_HOME: Lazy<Option<PathBuf>> = Lazy::new(|| {
     }
 });
 
+static CUDA_ARCH_ALIASES: Lazy<HashMap<String, Vec<CudaArch>>> =
+    Lazy::new(|| CONFIG.cuda_arch_aliases.clone());
+
+/// Parse the `;` seperated list of architecture numbers.
+///
+/// For example, `3.5;3.7;5.0;5.2;5.3;6.0;6.1;6.2;7.0;7.2;7.5;8.0;8.6`.
+pub(crate) fn parse_cuda_arch_list(text: &str) -> Result<Vec<CudaArch>> {
+    let arches: Vec<_> = text
+        .split(';')
+        .flat_map(|token| {
+            if let Some(list) = CUDA_ARCH_ALIASES.get(token) {
+                list.iter().map(|arch| Ok(arch.clone())).collect()
+            } else {
+                vec![token.parse()]
+            }
+        })
+        .try_collect()?;
+    Ok(arches)
+}
+
 fn rerun_env(name: &str) -> Option<OsString> {
     println!("cargo:rerun-if-env-changed={}", name);
-    std::env::var_os(name)
+    env::var_os(name)
 }
 
 fn rerun_env_pathbuf(name: &str) -> Option<PathBuf> {
@@ -169,5 +192,15 @@ fn rerun_env_pathbuf(name: &str) -> Option<PathBuf> {
 
 fn rerun_env_string(name: &str) -> Option<String> {
     println!("cargo:rerun-if-env-changed={}", name);
-    std::env::var(name).ok()
+    env::var(name).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::CONFIG;
+
+    #[test]
+    fn parse_config_toml() {
+        let _ = &*CONFIG;
+    }
 }

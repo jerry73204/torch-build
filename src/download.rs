@@ -13,7 +13,7 @@ use std::{
 pub(crate) fn download_libtorch() -> Result<PathBuf> {
     let libtorch_dir = PathBuf::from(crate::env::OUT_DIR).join("libtorch");
     fs::create_dir_all(&libtorch_dir)?;
-    let path = libtorch_dir.join(format!("v{}.zip", TORCH_VERSION));
+    let path = libtorch_dir.join(format!("v{}.zip", *TORCH_VERSION));
     download(libtorch_url()?, &path)?;
     extract(&path, &libtorch_dir)?;
     let libtorch_dir = libtorch_dir.join("libtorch");
@@ -67,7 +67,7 @@ pub fn libtorch_url() -> Result<&'static str> {
                          {}/libtorch{}-abi-shared-with-deps-{}%2B{}.zip",
                         device,
                         if use_cxx11_abi { "-cxx11" } else { "" },
-                        TORCH_VERSION,
+                        *TORCH_VERSION,
                         device
                     )
 
