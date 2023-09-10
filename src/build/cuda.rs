@@ -8,6 +8,8 @@ use std::{
     str,
 };
 
+use crate::{probe_python, ProbePython};
+
 #[derive(Debug, Clone)]
 pub struct CudaExtension {
     link_python: bool,
@@ -145,6 +147,15 @@ impl CudaExtension {
         let mut cc_build = cc::Build::new();
         self.configure_cc(&mut cc_build)?;
         cc_build.try_compile(name)?;
+
+        let bg_build = bindgen::Builder::default();
+        let bg_build = self.configure_bindgen(bg_build)?;
+        let bindings = bg_build.generate()?;
+
+        let out_dir = self.out_dir()?;
+        let codegen_file = out_dir.join(format!("{name}.rs"));
+        bindings.write_to_file(codegen_file)?;
+
         self.link()?;
         Ok(())
     }
@@ -285,6 +296,46 @@ impl CudaExtension {
         }
 
         Ok(())
+    }
+
+    pub fn configure_bindgen(&self, builder: bindgen::Builder) -> Result<bindgen::Builder> {
+        let Self {
+            includes, headers, ..
+        } = self;
+
+        // Probe libtorch
+        let libtorch = crate::probe::probe_libtorch()?;
+        ensure!(
+            libtorch.is_cuda_api_available(),
+            "CUDA runtime is not supported by PyTorch"
+        );
+
+        let builder = builder.clang_args(["-x", "c++"]);
+
+        let builder = headers.iter().fold(builder, |builder, header| {
+            builder.header(format!("{}", header.display()))
+        });
+
+        let builder = includes.iter().fold(builder, |builder, path| {
+            builder.clang_arg(format!("-I{}", path.display()))
+        });
+
+        let builder = libtorch
+            .include_paths(true)?
+            .fold(builder, |builder, path| {
+                builder.clang_arg(format!("-I{}", path.display()))
+            });
+
+        let ProbePython {
+            includes: python_includes,
+            ..
+        } = probe_python()?;
+
+        let builder = python_includes.into_iter().fold(builder, |builder, path| {
+            builder.clang_arg(format!("-I{}", path.display()))
+        });
+
+        Ok(builder)
     }
 }
 

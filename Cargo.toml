@@ -28,6 +28,7 @@ python-config = "0.1.0"
 serde = { version = "1.0.188", features = ["derive"] }
 toml = "0.7.8"
 ureq = { version = "2.7.1", optional = true }
+bindgen = "0.68.1"
 
 [features]
 default = []

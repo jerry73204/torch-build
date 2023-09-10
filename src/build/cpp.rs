@@ -1,3 +1,4 @@
+use crate::{probe_python, ProbePython};
 use anyhow::{ensure, Context as _, Result};
 use cfg_if::cfg_if;
 use log::warn;
@@ -14,6 +15,7 @@ pub struct CppExtension {
     includes: Vec<PathBuf>,
     link_searches: Vec<PathBuf>,
     libraries: Vec<String>,
+    headers: Vec<PathBuf>,
     sources: Vec<PathBuf>,
 }
 
@@ -23,6 +25,7 @@ impl CppExtension {
             use_cuda_api: false,
             link_python: false,
             includes: vec![],
+            headers: vec![],
             sources: vec![],
             link_searches: vec![],
             libraries: vec![],
@@ -71,6 +74,24 @@ impl CppExtension {
         P::Item: AsRef<Path>,
     {
         self.sources
+            .extend(paths.into_iter().map(|p| p.as_ref().to_owned()));
+        self
+    }
+
+    pub fn header<P>(&mut self, path: P) -> &mut Self
+    where
+        P: AsRef<Path>,
+    {
+        self.headers.push(path.as_ref().to_owned());
+        self
+    }
+
+    pub fn headers<P>(&mut self, paths: P) -> &mut Self
+    where
+        P: IntoIterator,
+        P::Item: AsRef<Path>,
+    {
+        self.headers
             .extend(paths.into_iter().map(|p| p.as_ref().to_owned()));
         self
     }
@@ -263,6 +284,50 @@ impl CppExtension {
 
         Ok(())
     }
+
+    pub fn configure_bindgen(&self, builder: bindgen::Builder) -> Result<bindgen::Builder> {
+        let Self {
+            use_cuda_api,
+            link_python,
+            ref includes,
+            ref headers,
+            ..
+        } = *self;
+
+        // Probe libtorch
+        let libtorch = crate::probe::probe_libtorch()?;
+
+        let builder = builder.clang_args(["-x", "c++"]);
+
+        let builder = headers.iter().fold(builder, |builder, header| {
+            builder.header(format!("{}", header.display()))
+        });
+
+        let builder = includes.iter().fold(builder, |builder, path| {
+            builder.clang_arg(format!("-I{}", path.display()))
+        });
+
+        let builder = libtorch
+            .include_paths(use_cuda_api)?
+            .fold(builder, |builder, path| {
+                builder.clang_arg(format!("-I{}", path.display()))
+            });
+
+        let builder = if link_python {
+            let ProbePython {
+                includes: python_includes,
+                ..
+            } = probe_python()?;
+
+            python_includes.into_iter().fold(builder, |builder, path| {
+                builder.clang_arg(format!("-I{}", path.display()))
+            })
+        } else {
+            builder
+        };
+
+        Ok(builder)
+    }
 }
 
 impl Default for CppExtension {
@@ -273,8 +338,6 @@ impl Default for CppExtension {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn configure_cc_python_libs_unix(build: &mut cc::Build) -> Result<()> {
-    use crate::{probe_python, ProbePython};
-
     let ProbePython {
         includes,
         link_searches,
