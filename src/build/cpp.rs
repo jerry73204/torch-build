@@ -116,19 +116,19 @@ impl CppExtension {
     /// [link()](CppExtension::link).
     pub fn build(&self, name: &str) -> Result<()> {
         let mut build = cc::Build::new();
-        self.configure(&mut build)?;
+        self.configure_cc(&mut build)?;
         build.try_compile(name)?;
         self.link()?;
         Ok(())
     }
 
     /// Configure the [cc::Build] to compile C++ source code.
-    pub fn configure(&self, build: &mut cc::Build) -> Result<()> {
+    pub fn configure_cc(&self, build: &mut cc::Build) -> Result<()> {
         cfg_if! {
             if #[cfg(any(target_os = "linux", target_os = "macos"))] {
-                self.configure_unix(build)?
+                self.configure_cc_unix(build)?
             } else if #[cfg(target_os = "windows")] {
-                self.configure_windows(build)?
+                self.configure_cc_windows(build)?
             } else {
                 bail!("Unsupported OS")
             }
@@ -138,7 +138,7 @@ impl CppExtension {
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn configure_unix(&self, build: &mut cc::Build) -> Result<()> {
+    fn configure_cc_unix(&self, build: &mut cc::Build) -> Result<()> {
         let Self {
             use_cuda_api,
             link_python,
@@ -181,14 +181,14 @@ impl CppExtension {
 
         // link python
         if link_python {
-            configure_python_libs_unix(build)?;
+            configure_cc_python_libs_unix(build)?;
         }
 
         Ok(())
     }
 
     #[cfg(target_os = "windows")]
-    fn configure_windows(&self, build: &mut cc::Build) -> Result<()> {
+    fn configure_cc_windows(&self, build: &mut cc::Build) -> Result<()> {
         let Self {
             use_cuda_api,
             link_python,
@@ -272,7 +272,7 @@ impl Default for CppExtension {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn configure_python_libs_unix(build: &mut cc::Build) -> Result<()> {
+fn configure_cc_python_libs_unix(build: &mut cc::Build) -> Result<()> {
     let output = Command::new("python3-config")
         .arg("--includes")
         .arg("--ldflags")

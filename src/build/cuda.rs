@@ -1,7 +1,8 @@
-use anyhow::{ensure, Context as _, Result};
+use anyhow::{anyhow, ensure, Context as _, Result};
 use cfg_if::cfg_if;
 use log::warn;
 use std::{
+    env,
     path::{Path, PathBuf},
     process::Command,
     str,
@@ -13,7 +14,9 @@ pub struct CudaExtension {
     includes: Vec<PathBuf>,
     link_searches: Vec<PathBuf>,
     libraries: Vec<String>,
+    headers: Vec<PathBuf>,
     sources: Vec<PathBuf>,
+    out_dir: Option<PathBuf>,
 }
 
 impl CudaExtension {
@@ -21,10 +24,23 @@ impl CudaExtension {
         Self {
             link_python: false,
             includes: vec![],
+            headers: vec![],
             sources: vec![],
             link_searches: vec![],
             libraries: vec![],
+            out_dir: None,
         }
+    }
+
+    pub fn out_dir(&self) -> Result<PathBuf> {
+        Ok(match &self.out_dir {
+            Some(dir) => dir.clone(),
+            None => {
+                let out_dir = env::var_os("OUT_DIR")
+                    .ok_or_else(|| anyhow!("OUT_DIR environment variable is not set"))?;
+                PathBuf::from(out_dir)
+            }
+        })
     }
 
     pub fn link_python(&mut self, enabled: bool) -> &mut Self {
@@ -46,6 +62,24 @@ impl CudaExtension {
         P::Item: AsRef<Path>,
     {
         self.includes
+            .extend(paths.into_iter().map(|p| p.as_ref().to_owned()));
+        self
+    }
+
+    pub fn header<P>(&mut self, path: P) -> &mut Self
+    where
+        P: AsRef<Path>,
+    {
+        self.headers.push(path.as_ref().to_owned());
+        self
+    }
+
+    pub fn headers<P>(&mut self, paths: P) -> &mut Self
+    where
+        P: IntoIterator,
+        P::Item: AsRef<Path>,
+    {
+        self.headers
             .extend(paths.into_iter().map(|p| p.as_ref().to_owned()));
         self
     }
@@ -108,18 +142,18 @@ impl CudaExtension {
     /// [configure()](CudaExtension::configure) and then
     /// [link()](CudaExtension::link).
     pub fn build(&self, name: &str) -> Result<()> {
-        let mut build = cc::Build::new();
-        self.configure(&mut build)?;
-        build.try_compile(name)?;
+        let mut cc_build = cc::Build::new();
+        self.configure_cc(&mut cc_build)?;
+        cc_build.try_compile(name)?;
         self.link()?;
         Ok(())
     }
 
     /// Configure the [cc::Build] to compile CUDA source code.
-    pub fn configure(&self, build: &mut cc::Build) -> Result<()> {
+    pub fn configure_cc(&self, build: &mut cc::Build) -> Result<()> {
         cfg_if! {
             if #[cfg(any(target_os = "linux", target_os = "macos"))] {
-                self.configure_unix(build)?;
+                self.configure_cc_unix(build)?;
             } else if #[cfg(target_os = "windows")] {
                 bail!("Unsupported OS")l
             } else {
@@ -131,13 +165,14 @@ impl CudaExtension {
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn configure_unix(&self, build: &mut cc::Build) -> Result<()> {
+    fn configure_cc_unix(&self, build: &mut cc::Build) -> Result<()> {
         let Self {
             link_python: use_python,
             ref includes,
             ref link_searches,
             ref libraries,
             ref sources,
+            ..
         } = *self;
 
         let libtorch = crate::probe::probe_libtorch()?;
@@ -145,7 +180,6 @@ impl CudaExtension {
             libtorch.is_cuda_api_available(),
             "CUDA runtime is not supported by PyTorch"
         );
-        const USE_CUDA_API: bool = true;
 
         let cxx11_abi_flag = if libtorch.use_cxx11_abi { "1" } else { "0" };
         let cuda_arches = crate::cuda::cuda_arches()?;
@@ -153,7 +187,7 @@ impl CudaExtension {
         build
             .cuda(true)
             .pic(true)
-            .includes(libtorch.include_paths(USE_CUDA_API)?)
+            .includes(libtorch.include_paths(true)?)
             .includes(includes)
             .flag("-std=c++14")
             .flag(&format!("-D_GLIBCXX_USE_CXX11_ABI={}", cxx11_abi_flag))
@@ -192,7 +226,7 @@ impl CudaExtension {
 
         // link python
         if use_python {
-            configure_python_libs_unix(build)?;
+            configure_cc_python_libs_unix(build)?;
         }
 
         Ok(())
@@ -231,7 +265,7 @@ impl CudaExtension {
 
         // link libtorch
         libtorch.link_paths(true)?.for_each(|path| {
-            print_cargo_link_search(&path);
+            print_cargo_link_search(path);
         });
         libtorch.libraries(true, link_python)?.for_each(|library| {
             print_cargo_link_library(library);
@@ -261,7 +295,7 @@ impl Default for CudaExtension {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn configure_python_libs_unix(build: &mut cc::Build) -> Result<()> {
+fn configure_cc_python_libs_unix(build: &mut cc::Build) -> Result<()> {
     let output = Command::new("python3-config")
         .arg("--includes")
         .arg("--ldflags")
