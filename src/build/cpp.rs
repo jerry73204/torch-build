@@ -226,6 +226,8 @@ impl CppExtension {
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn link_unix(&self) -> Result<()> {
+        use crate::build::utils::{print_cargo_link_library, print_cargo_link_search};
+
         let Self {
             use_cuda_api,
             link_python,
@@ -238,20 +240,20 @@ impl CppExtension {
 
         // link libtorch
         libtorch.link_paths(use_cuda_api)?.for_each(|path| {
-            println!("cargo:rustc-link-search=native={}", path.display());
+            print_cargo_link_search(path);
         });
         libtorch
             .libraries(use_cuda_api, link_python)?
             .for_each(|library| {
-                println!("cargo:rustc-link-lib={library}",);
+                print_cargo_link_library(library);
             });
 
         // link user-specified libraries
         link_searches.iter().for_each(|path| {
-            println!("cargo:rustc-link-search=native={}", path.display());
+            print_cargo_link_search(path);
         });
         libraries.iter().for_each(|library| {
-            println!("cargo:rustc-link-lib={library}",);
+            print_cargo_link_library(library);
         });
 
         // link python
@@ -304,6 +306,8 @@ fn configure_python_libs_unix(build: &mut cc::Build) -> Result<()> {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn link_python_libs_unix() -> Result<()> {
+    use crate::build::utils::{print_cargo_link_library, print_cargo_link_search};
+
     let output = Command::new("python3-config")
         .arg("--includes")
         .arg("--ldflags")
@@ -320,11 +324,11 @@ fn link_python_libs_unix() -> Result<()> {
             }
             Some("-L") => {
                 let path = &flag[2..];
-                println!("cargo:rustc-link-search=native={path}");
+                print_cargo_link_search(path);
             }
             Some("-l") => {
                 let library = &flag[2..];
-                println!("cargo:rustc-link-lib={library}",);
+                print_cargo_link_library(library);
             }
             _ => {
                 warn!("ignore `python3-config` flag {}", flag);
