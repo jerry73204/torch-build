@@ -104,6 +104,17 @@ impl CudaExtension {
         self
     }
 
+    /// Compile and link CUDA source code. This is a shorthand for
+    /// [configure()](CudaExtension::configure) and then
+    /// [link()](CudaExtension::link).
+    pub fn build(&self, name: &str) -> Result<()> {
+        let mut build = cc::Build::new();
+        self.configure(&mut build)?;
+        build.try_compile(name)?;
+        self.link()?;
+        Ok(())
+    }
+
     /// Configure the [cc::Build] to compile CUDA source code.
     pub fn configure(&self, build: &mut cc::Build) -> Result<()> {
         cfg_if! {

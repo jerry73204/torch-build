@@ -111,6 +111,17 @@ impl CppExtension {
         self
     }
 
+    /// Compile and link C++ source code. This is a shorthand for
+    /// [configure()](CppExtension::configure) and then
+    /// [link()](CppExtension::link).
+    pub fn build(&self, name: &str) -> Result<()> {
+        let mut build = cc::Build::new();
+        self.configure(&mut build)?;
+        build.try_compile(name)?;
+        self.link()?;
+        Ok(())
+    }
+
     /// Configure the [cc::Build] to compile C++ source code.
     pub fn configure(&self, build: &mut cc::Build) -> Result<()> {
         cfg_if! {
