@@ -13,8 +13,8 @@ use std::{
 /// The information of libtorch installation and its capabilities.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Library {
-    /// The directory containing header files.
-    pub include_dir: PathBuf,
+    /// The directories containing header files.
+    pub include_dirs: Vec<PathBuf>,
 
     /// The directory containing library files.
     pub lib_dir: PathBuf,
@@ -38,25 +38,14 @@ impl Library {
         use_cuda_api: impl Into<Option<bool>>,
     ) -> Result<impl Iterator<Item = PathBuf>> {
         let Self {
-            include_dir: libtorch_include_dir,
+            include_dirs: base_includes,
             api,
             ..
         } = self;
-        let include_dir = libtorch_include_dir;
         let use_cuda_api = use_cuda_api
             .into()
             .unwrap_or_else(|| self.is_cuda_api_available());
 
-        let base_includes = [
-            include_dir.clone(),
-            include_dir
-                .join("torch")
-                .join("csrc")
-                .join("api")
-                .join("include"),
-            include_dir.join("TH"),
-            include_dir.join("THC"),
-        ];
         let extra_includes = if use_cuda_api {
             match api {
                 Api::Hip(HipApi {
@@ -64,12 +53,10 @@ impl Library {
                     miopen_home,
                     ..
                 }) => {
-                    let thh_include = include_dir.join("THH");
                     let rocm_include = rocm_home.join("include");
                     let miopen_include = miopen_home.join("include");
-                    [thh_include, rocm_include, miopen_include]
-                        .into_iter()
-                        .boxed()
+
+                    [rocm_include, miopen_include].into_iter().boxed()
                 }
                 Api::Cuda(CudaApi {
                     cuda_home,
@@ -89,7 +76,7 @@ impl Library {
             iter::empty().boxed()
         };
 
-        let all_includes = chain!(base_includes, extra_includes);
+        let all_includes = chain!(base_includes.clone(), extra_includes);
 
         #[cfg(target_os = "linux")]
         let all_includes = all_includes.filter(|path| path != Path::new("/usr/include"));
@@ -266,6 +253,14 @@ impl Api {
 
     pub fn cuda_library_dir(&self) -> Option<PathBuf> {
         Some(self.cuda_home_dir()?.join("lib64"))
+    }
+
+    /// Returns `true` if the api is [`Hip`].
+    ///
+    /// [`Hip`]: Api::Hip
+    #[must_use]
+    pub fn is_hip(&self) -> bool {
+        matches!(self, Self::Hip(..))
     }
 }
 

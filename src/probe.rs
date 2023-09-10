@@ -7,6 +7,7 @@ use crate::{
 };
 use anyhow::{anyhow, bail, Context as _, Result};
 use cfg_if::cfg_if;
+use itertools::chain;
 use log::warn;
 use once_cell::sync::OnceCell;
 use std::{
@@ -26,7 +27,7 @@ enum Probe {
 }
 
 struct ProbePyTorch {
-    pub include_dir: PathBuf,
+    pub include_dirs: Vec<PathBuf>,
     pub lib_dir: PathBuf,
     pub use_cxx11_abi: bool,
 }
@@ -35,43 +36,57 @@ struct ProbePyTorch {
 pub fn probe_libtorch() -> Result<&'static Library> {
     static PROBE: OnceCell<Library> = OnceCell::new();
 
-    PROBE.get_or_try_init(|| -> Result<_> { probe_libtorch_private() })
+    PROBE.get_or_try_init(probe_libtorch_private)
 }
 
 /// Probe the installation directory of libtorch and its capabilities.
 fn probe_libtorch_private() -> Result<Library> {
     let probe = find_or_download_libtorch_dir()?;
 
-    let libtorch_dir = match probe {
-        Probe::Manual(dir) | Probe::System(dir) | Probe::Download(dir) => dir,
+    let library = match probe {
+        Probe::Manual(libtorch_dir)
+        | Probe::System(libtorch_dir)
+        | Probe::Download(libtorch_dir) => {
+            let lib_dir = libtorch_dir.join("lib");
+            let use_cxx11_abi = probe_cxx11_abi();
+            let api = probe_cuda_api(&lib_dir);
+            let include_dirs: Vec<_> = {
+                let base = libtorch_dir.join("include");
+                let base_dirs = [
+                    base.clone(),
+                    base.join("torch").join("csrc").join("api").join("include"),
+                    base.join("TH"),
+                    base.join("THC"),
+                ];
+                let thh_include_dir = api.is_hip().then(|| base.join("thh"));
+                chain!(base_dirs, thh_include_dir).collect()
+            };
+
+            Library {
+                api,
+                use_cxx11_abi,
+                include_dirs,
+                lib_dir,
+            }
+        }
         Probe::PyTorch(library) => {
             let ProbePyTorch {
-                include_dir,
+                include_dirs,
                 lib_dir,
                 use_cxx11_abi,
             } = library;
             let api = probe_cuda_api(&lib_dir);
 
-            return Ok(Library {
-                include_dir,
+            Library {
+                include_dirs,
                 lib_dir,
                 api,
                 use_cxx11_abi,
-            });
+            }
         }
     };
 
-    let include_dir = libtorch_dir.join("include");
-    let lib_dir = libtorch_dir.join("lib");
-    let api = probe_cuda_api(&lib_dir);
-    let use_cxx11_abi = probe_cxx11_abi();
-
-    Ok(Library {
-        api,
-        use_cxx11_abi,
-        include_dir,
-        lib_dir,
-    })
+    Ok(library)
 }
 
 /// Locate the libtorch directory, or try to download libtorch if it does not exist.
@@ -168,8 +183,10 @@ fn find_python_interpreter() -> Result<&'static Path> {
 }
 
 fn probe_pytorch() -> Result<ProbePyTorch> {
-    const PYTHON_PROBE_PYTORCH_CODE: &str =
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/probe_pytorch.py"));
+    const PYTHON_PROBE_PYTORCH_CODE: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/pysrc/probe_pytorch.py"
+    ));
 
     let python_interpreter = find_python_interpreter()?;
     let output = Command::new(python_interpreter)
@@ -179,7 +196,7 @@ fn probe_pytorch() -> Result<ProbePyTorch> {
         .with_context(|| format!("error running {python_interpreter:?}"))?;
 
     let mut use_cxx11_abi = None;
-    let mut include_dir = None;
+    let mut include_dirs = vec![];
     let mut lib_dir = None;
 
     for line in output.stdout.lines() {
@@ -196,7 +213,7 @@ fn probe_pytorch() -> Result<ProbePyTorch> {
                 }
             });
         } else if let Some(path) = line.strip_prefix("LIBTORCH_INCLUDE: ") {
-            include_dir = Some(PathBuf::from(path));
+            include_dirs.push(PathBuf::from(path));
         } else if let Some(path) = line.strip_prefix("LIBTORCH_LIB: ") {
             lib_dir = Some(PathBuf::from(path));
         }
@@ -204,14 +221,12 @@ fn probe_pytorch() -> Result<ProbePyTorch> {
 
     let use_cxx11_abi =
         use_cxx11_abi.ok_or_else(|| anyhow!("no LIBTORCH_CXX11 returned by python {output:?}"))?;
-    let libtorch_include_dir =
-        include_dir.ok_or_else(|| anyhow!("no LIBTORCH_INCLUDE returned by python {output:?}"))?;
-    let libtorch_lib_dir =
+    let lib_dir =
         lib_dir.ok_or_else(|| anyhow!("no LIBTORCH_LIB returned by python {output:?}"))?;
 
     Ok(ProbePyTorch {
-        include_dir: libtorch_include_dir,
-        lib_dir: libtorch_lib_dir,
+        include_dirs,
+        lib_dir,
         use_cxx11_abi,
     })
 }
