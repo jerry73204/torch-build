@@ -5,7 +5,7 @@ use crate::{
     },
     library::{Api, CudaApi, CudaSplitApi, HipApi, Library},
 };
-use anyhow::{anyhow, bail, Context as _, Result};
+use anyhow::{anyhow, bail, ensure, Context as _, Result};
 use cfg_if::cfg_if;
 use itertools::chain;
 use log::warn;
@@ -30,6 +30,12 @@ struct ProbePyTorch {
     pub include_dirs: Vec<PathBuf>,
     pub lib_dir: PathBuf,
     pub use_cxx11_abi: bool,
+}
+
+pub(crate) struct ProbePython {
+    pub includes: Vec<PathBuf>,
+    pub link_searches: Vec<PathBuf>,
+    pub libraries: Vec<String>,
 }
 
 /// Probe the installation directory of libtorch and its capabilities.
@@ -180,6 +186,47 @@ fn find_python_interpreter() -> Result<&'static Path> {
         }
     };
     Ok(path)
+}
+
+pub(crate) fn probe_python() -> Result<ProbePython> {
+    let output = Command::new("python3-config")
+        .arg("--includes")
+        .arg("--ldflags")
+        .arg("--embed")
+        .output()?;
+    ensure!(output.status.success(), "unable to run `python3-config`");
+
+    let stdout = str::from_utf8(&output.stdout)
+        .with_context(|| "unable to parse output of `python3-config`")?;
+
+    let mut includes = vec![];
+    let mut link_searches = vec![];
+    let mut libraries = vec![];
+
+    for flag in stdout.split([' ', '\n']) {
+        let (Some(key), Some(value)) = (flag.get(0..2), flag.get(2..)) else {
+            continue;
+        };
+
+        match key {
+            "-I" => {
+                includes.push(PathBuf::from(value));
+            }
+            "-L" => {
+                link_searches.push(PathBuf::from(value));
+            }
+            "-l" => {
+                libraries.push(value.to_string());
+            }
+            _ => {}
+        }
+    }
+
+    Ok(ProbePython {
+        includes,
+        link_searches,
+        libraries,
+    })
 }
 
 fn probe_pytorch() -> Result<ProbePyTorch> {

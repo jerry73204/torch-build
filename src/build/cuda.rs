@@ -296,33 +296,22 @@ impl Default for CudaExtension {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn configure_cc_python_libs_unix(build: &mut cc::Build) -> Result<()> {
-    let output = Command::new("python3-config")
-        .arg("--includes")
-        .arg("--ldflags")
-        .arg("--embed")
-        .output()?;
-    ensure!(output.status.success(), "unable to run `python3-config`");
-    let stdout = str::from_utf8(&output.stdout)
-        .with_context(|| "unable to parse output `python3-config`")?;
-    stdout
-        .split(&[' ', '\n'][..])
-        .for_each(|flag| match flag.get(0..2) {
-            Some("-I") => {
-                let path = &flag[2..];
-                build.include(path);
-            }
-            Some("-L") => {
-                let path = &flag[2..];
-                build.flag("-Xlinker").flag(&format!("-Wl,-rpath={path}"));
-            }
-            Some("-l") => {
-                let library = &flag[2..];
-                build.flag(&format!("-l{library}"));
-            }
-            _ => {
-                warn!("ignore `python3-config` flag {}", flag);
-            }
-        });
+    let ProbePython {
+        includes,
+        link_searches,
+        libraries,
+    } = probe_python()?;
+    build.includes(includes);
+
+    for path in link_searches {
+        build
+            .flag("-Xlinker")
+            .flag(&format!("-Wl,-rpath={}", path.display()));
+    }
+
+    for library in libraries {
+        build.flag(&format!("-l{library}"));
+    }
 
     Ok(())
 }
